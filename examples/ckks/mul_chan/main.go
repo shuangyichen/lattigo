@@ -43,7 +43,7 @@ func ReadCsv(filename string, num int) (x [][]complex128, y []complex128) {
 				if err != nil {
 					fmt.Println(err)
 				}
-				x[i][0] = complex(float64(value/255), 0)
+				x[i][j-1] = complex(float64(value)/float64(255), 0)
 
 			}
 		}
@@ -80,7 +80,7 @@ func Readcsv_filter(filename string, f_h int, f_w int, c_in int, c_out int) (fil
 	return filters
 }
 
-func Readcsv_bias(filename string, c_in int, c_out int) (bias [][]complex128) {
+func Readcsv_bias(filename string, c_in int, c_out int) (bias []float64) {
 	opencast, err := os.Open(filename)
 	if err != nil {
 		fmt.Println(err)
@@ -89,61 +89,184 @@ func Readcsv_bias(filename string, c_in int, c_out int) (bias [][]complex128) {
 
 	ReadCsv := csv.NewReader(opencast)
 	Rec, err := ReadCsv.ReadAll()
-	bias = make([][]complex128, c_out)
-	for i := 0; i < c_out; i++ {
-		bias[i] = make([]complex128, c_in)
-	}
+	bias = make([]float64, c_out)
+
 	for i := 0; i < len(Rec); i++ {
 		value, err := strconv.ParseFloat(Rec[i][0], 64)
 		if err != nil {
 			fmt.Println(err)
 		}
-		z := i / (c_in)
-		x := i % (c_in)
-		bias[z][x] = complex(value, 0)
+
+		bias[i] = value //complex(value, 0)
 	}
 	return bias
 }
 
-func encoding_filter_bias(c_in int, c_out int, filters int, filter_size int, H_out int, W_out int, filter_value [][][]complex128, bias_value [][]complex128, encoder ckks.Encoder, params ckks.Parameters) (pt_w [][]*ckks.Plaintext, pt_b [][]*ckks.Plaintext) {
+func Readcsv_fc_bias(filename string, output int) (bias []float64) {
+	opencast, err := os.Open(filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer opencast.Close()
+
+	ReadCsv := csv.NewReader(opencast)
+	Rec, err := ReadCsv.ReadAll()
+	bias = make([]float64, output)
+	for i := 0; i < len(Rec); i++ {
+		value, err := strconv.ParseFloat(Rec[i][0], 64)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		bias[i] = value //complex(value, 0)
+	}
+	return bias
+}
+
+func Readcsv_fc(filename string, output int, features_num int) (fc [][]complex128) {
+	opencast, err := os.Open(filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer opencast.Close()
+
+	ReadCsv := csv.NewReader(opencast)
+	Rec, err := ReadCsv.ReadAll()
+	fc = make([][]complex128, output)
+
+	for i := 0; i < output; i++ {
+		fc[i] = make([]complex128, features_num)
+	}
+
+	for i := 0; i < len(Rec); i++ {
+		value, err := strconv.ParseFloat(Rec[i][0], 64)
+		if err != nil {
+			fmt.Println(err)
+		}
+		j := i / features_num
+		m := i % features_num
+
+		fc[j][m] = complex(value, 0)
+	}
+	return fc
+}
+func encoding_fc(output int, channel_in int, H int, W int, size int, fea_num int, fc_value [][]complex128, encoder ckks.Encoder, params ckks.Parameters) (fc_pt [][]*ckks.Plaintext) {
+	fc_mat := make([][][]complex128, output)
+	for i := 0; i < output; i++ {
+		fc_mat[i] = make([][]complex128, channel_in)
+		for j := 0; j < channel_in; j++ {
+			fc_mat[i][j] = make([]complex128, size)
+		}
+	}
+	// fmt.Println(channel_in)
+	// for i := 0; i < output; i++ {
+	// 	for j := 0; j < channel_in; j++ {
+	// 		for k := 0; k < W; k++ {
+	// 			for m := 0; m < H; m++ {
+	// 				// fmt.Println(j)
+	// 				fc_mat[i][j][k*36*5+m*36] = fc_value[i][j*W+k*H+m]
+	// 			}
+	// 		}
+	// 	}
+	// }
+	// for i := 0; i < output; i++ {
+	// 	for j := 0; j < fea_num; j++ {
+	// 		k := j / 25
+	// 		l := j - 25*k
+	// 		m := l / 5
+	// 		n := l % 5
+	// 		fc_mat[i][k][(m*13+n*2)*18] = fc_value[i][j]
+
+	// 	}
+	// }
+	for k := 0; k < output; k++ {
+		for q := 0; q < channel_in; q++ {
+			for i := 0; i <= 16; i++ {
+				if i%4 == 0 {
+					for j := 0; j < 5; j++ {
+						fc_mat[k][q][i*13*18+2*j*36] = fc_value[k][q*25+(i/4)*5+j]
+					}
+				}
+			}
+		}
+	}
+	fc_pt = make([][]*ckks.Plaintext, output)
+	for m := 0; m < output; m++ {
+		fc_pt[m] = make([]*ckks.Plaintext, channel_in)
+		for j := 0; j < channel_in; j++ {
+			fc_pt[m][j] = encoder.EncodeNew(fc_mat[m][j], params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+		}
+	}
+
+	return fc_pt
+}
+
+func encoding_filter_bias(c_in int, c_out int, filters int, filter_size int, H_out int, W_out int, filter_value [][][]complex128, encoder ckks.Encoder, params ckks.Parameters) (pt_w [][]*ckks.Plaintext) {
 	enc_filter := make([][][]complex128, c_out)
-	enc_bias := make([][][]complex128, c_out)
-	for m := 0; m < c_out; m++ {
-		enc_filter[m] = make([][]complex128, c_in)
-		enc_bias[m] = make([][]complex128, c_in)
-		for l := 0; l < c_in; l++ {
-			enc_filter[m][l] = make([]complex128, H_out*W_out*filters)
-			enc_bias[m][l] = make([]complex128, H_out*W_out*filters)
-			for i := 0; i < H_out; i++ {
-				for j := 0; j < W_out; j++ {
-					for k := 0; k < filter_size; k++ {
-						for n := 0; n < filter_size; n++ {
-							enc_filter[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = filter_value[m][l][k*3+n]
-							if k == 0 && n == 0 {
-								enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = bias_value[m][l]
-							} else {
-								enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
+	// enc_bias := make([][]complex128, c_out)
+	if filters == 9 {
+		for m := 0; m < c_out; m++ {
+			enc_filter[m] = make([][]complex128, c_in)
+			// enc_bias[m] = make([][]complex128, c_in)
+			for l := 0; l < c_in; l++ {
+				enc_filter[m][l] = make([]complex128, H_out*W_out*filters)
+				// enc_bias[m][l] = make([]complex128, H_out*W_out*filters)
+				for i := 0; i < H_out; i++ {
+					for j := 0; j < W_out; j++ {
+						for k := 0; k < filter_size; k++ {
+							for n := 0; n < filter_size; n++ {
+								enc_filter[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = filter_value[m][l][k*3+n]
+								// if k == 0 && n == 0 {
+								// 	enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = bias_value[m][l]
+								// } else {
+								// 	enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
+								// }
 							}
 						}
 					}
 				}
 			}
 		}
+	} else if filters == 18 {
+		for m := 0; m < c_out; m++ {
+			enc_filter[m] = make([][]complex128, c_in)
+			// enc_bias[m] = make([][]complex128, c_in)
+			for l := 0; l < c_in; l++ {
+				enc_filter[m][l] = make([]complex128, H_out*W_out*filters)
+				// enc_bias[m][l] = make([]complex128, H_out*W_out*filters)
+				for i := 0; i < H_out; i++ {
+					for j := 0; j < W_out; j++ {
+						for k := 0; k < filter_size; k++ {
+							for n := 0; n < filter_size; n++ {
+								enc_filter[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = filter_value[m][l][k*3+n]
+								// if k == 0 && n == 0 {
+								// 	enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = bias_value[m][l]
+								// } else {
+								// 	enc_bias[m][l][(W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
+								// }
+							}
+						}
+					}
+				}
+			}
+		}
+		// fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f  %6.10f %6.10f  %6.10f  ...\n", enc_filter[0][0][0], enc_filter[0][0][1], enc_filter[0][0][2], enc_filter[0][0][8], enc_filter[0][0][9], enc_filter[0][0][10], enc_filter[0][0][18])
+
 	}
 
 	pt_w = make([][]*ckks.Plaintext, c_out)
-	pt_b = make([][]*ckks.Plaintext, c_out)
+	// pt_b = make([][]*ckks.Plaintext, c_out)
 	for m := 0; m < c_out; m++ {
 		// fmt.Println(m)
 		pt_w[m] = make([]*ckks.Plaintext, c_in)
-		pt_b[m] = make([]*ckks.Plaintext, c_in)
+		// pt_b[m] = make([]*ckks.Plaintext, c_in)
 		for l := 0; l < c_in; l++ {
 			// fmt.Println(l)
 			pt_w[m][l] = encoder.EncodeNew(enc_filter[m][l], params.MaxLevel(), params.DefaultScale(), params.LogSlots())
-			pt_b[m][l] = encoder.EncodeNew(enc_bias[m][l], params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+			// pt_b[m][l] = encoder.EncodeNew(enc_bias[m][l], params.MaxLevel(), params.DefaultScale(), params.LogSlots())
 		}
 	}
-	return pt_w, pt_b
+	return pt_w
 }
 
 func main() {
@@ -199,19 +322,19 @@ func main() {
 	// Scheme context and keys
 	//Preparing data
 	sample_num := 1
-	// x, y := ReadCsv("mnist_test.csv", sample_num)
-	x := make([][]complex128, sample_num)
-	x[0] = make([]complex128, 784)
-	for i := 0; i < len(x[0]); i++ {
-		x[0][i] = 1
-	}
-	fmt.Println(len(x))
-	fmt.Println(len(x[0]))
-	// fmt.Println(len(y))
+	x, _ := ReadCsv("mnist_test.csv", sample_num)
+	// x := make([][]complex128, sample_num)
+	// x[0] = make([]complex128, 784)
+	// for i := 0; i < len(x[0]); i++ {
+	// 	x[0][i] = complex(float64(i), 0)
+	// }
+	// fmt.Println(len(x))
+	// fmt.Println(len(x[0]))
+	// // fmt.Println(len(y))
 
 	F_H := 28
 	F_W := 28
-	party1_cols := 3
+	party1_cols := 1
 	//vector<int> party1_index(F_H_out);
 	//vector<int> party2_index(F_H*F_W);
 
@@ -219,8 +342,8 @@ func main() {
 	stride := 1
 	F_H_out := (F_H - filter_size + 1) / stride
 	F_W_out := (F_W - filter_size + 1) / stride
-	F_H_out_1 := (F_H_out - filter_size + 1) / stride
-	F_W_out_1 := (F_W_out - filter_size + 1) / stride
+	F_H_out_1 := 11
+	F_W_out_1 := 11
 	filters := filter_size * filter_size
 
 	features1 := make([][]complex128, sample_num)
@@ -232,17 +355,28 @@ func main() {
 
 	//Setting filter 0
 	c_in_0 := 1
-	c_out_0 := 32
-	c_in_1 := 32
-	c_out_1 := 64
+	c_out_0 := 4
+	c_in_1 := 4
+	c_out_1 := 4
+	features_num := 100
+	// c_in_1 := 32
+	// c_out_1 := 64
 	filters0_value := Readcsv_filter("00.csv", filter_size, filter_size, c_in_0, c_out_0)
+	// fmt.Println(filters0_value[0][0])
+	// fmt.Println(filters0_value[1][0])
+	// fmt.Println(filters0_value[2][0])
+	// fmt.Println(filters0_value[3][0])
+
 	bias0_value := Readcsv_bias("01.csv", c_in_0, c_out_0)
-	filters1_value := Readcsv_filter("10.csv", filter_size, filter_size, c_in_1, c_out_1)
-	bias1_value := Readcsv_bias("11.csv", c_in_1, c_out_1)
+	filters1_value := Readcsv_filter("20.csv", filter_size, filter_size, c_in_1, c_out_1)
+	bias1_value := Readcsv_bias("21.csv", c_in_1, c_out_1)
+	fc_value := Readcsv_fc("50.csv", 10, features_num)
+
+	fc_bias := Readcsv_fc_bias("51.csv", 10)
 
 	// pt_w0, pt_b0 := encoding_filter_bias(c_in_0, c_out_0, filters, filter_size, F_H_out, F_W_out, filters0_value, bias0_value, encoder, params)
 	// pt_w1, pt_b1 := encoding_filter_bias(c_in_1, c_out_1, filters, filter_size, F_H_out_1, F_W_out_1, filters1_value, bias1_value, encoder, params)
-	fmt.Printf("Read filter and bias")
+	fmt.Printf("Read filter and bias \n")
 	// filters0_value := make([][][]complex128, c_out_0)
 	// bias0_value := make([][]complex128, c_out_0)
 	// for i := 0; i < c_out_0; i++ {
@@ -272,6 +406,20 @@ func main() {
 			}
 		}
 	}
+	// for i := 0; i < 26*26*9; i++ {
+	// 	if real(features2[0][i]) > 0.7 {
+	// 		fmt.Println(i)
+	// 		fmt.Println(real(features2[0][i]))
+	// 	}
+	// }
+	// for i := 0; i < 28*28; i++ {
+	// 	if real(x[0][i]) > 0.7 {
+	// 		fmt.Println(i)
+	// 		fmt.Println(real(x[0][i]))
+	// 	}
+	// }
+	// v := float64(76) / float64(255)
+	// fmt.Println(v)
 
 	//generating filter
 	// for i := 0; i < filters; i++ {
@@ -305,7 +453,7 @@ func main() {
 	// 	}
 	// }
 
-	rots := []int{1, 2, 3, 4, 5, 6, 7, 8, F_H_out * F_W_out * filters, 9, 234, 243, 17, 34, 231, 248, 265, 462, 479, 496}
+	rots := []int{1, 2, 3, 4, 5, 6, 7, 8, F_H_out * F_W_out * filters, 9, 234, 243, 17, 34, 465, 482, 499, 930, 947, 964, 198, 216, 36, 234, 252, 18, 468, 486, 936}
 	// rots_
 	// rots := make([]int, filters+1)
 	// for i := 0; i < filters; i++ {
@@ -324,8 +472,13 @@ func main() {
 	decryptor = ckks.NewDecryptor(params, sk)
 	encryptor = ckks.NewEncryptor(params, pk)
 
-	pt_w0, pt_b0 := encoding_filter_bias(c_in_0, c_out_0, filters, filter_size, F_H_out, F_W_out, filters0_value, bias0_value, encoder, params)
-	pt_w1, pt_b1 := encoding_filter_bias(c_in_1, c_out_1, filters, filter_size, F_H_out_1, F_W_out_1, filters1_value, bias1_value, encoder, params)
+	pt_w0 := encoding_filter_bias(c_in_0, c_out_0, filters, filter_size, F_H_out, F_W_out, filters0_value, encoder, params)
+
+	// fmt.Printf("Encoding finished")
+	filters_1 := 18
+	pt_w1 := encoding_filter_bias(c_in_1, c_out_1, filters_1, filter_size, F_H_out_1, F_W_out_1, filters1_value, encoder, params)
+	pt_fc := encoding_fc(10, 4, 5, 5, 26*26*9, 100, fc_value, encoder, params)
+	fmt.Printf("Encoding finished \n")
 	//encoding weights
 
 	// pt_w0 := make([][]*ckks.Plaintext, c_out_0)
@@ -353,48 +506,172 @@ func main() {
 		ct_f2[i] = encryptor.EncryptNew(pt_f2[i])
 	}
 	//aggregating clients features
+
+	rots_for_replica_1 := []int{17, 34, 465, 482, 499, 930, 947, 964}
+	rots_for_pool_1 := []int{9, 234, 243}
+	rots_for_pool_2 := []int{18, 468, 486}
+	// rots_for_pool_1 := []int{17, 34, 231, 248, 265, 462, 479, 496}
 	ct_result := make([][]*ckks.Ciphertext, sample_num)
 	for i := 0; i < sample_num; i++ {
-
-		evaluator.Add(ct_f1[i], ct_f2[i], ct_f1[i])
-		fmt.Println(ct_f1[i].Level())
-
+		// printDebug(params, ct_f1[i], decryptor, encoder)
+		// printDebug(params, ct_f2[i], decryptor, encoder)
+		// evaluator.Add(ct_f1[i], ct_f2[i], ct_f1[i])
+		// printDebug(params, ct_f1[i], decryptor, encoder)
 		t1 := time.Now()
-		ct_result[i] = Conv(params, ct_f1, pt_w0, pt_b0, c_in_0, c_out_0, filters, F_H_out*F_W_out*filters, evaluator, decryptor, encoder)
-		// printDebug(params, ct_result[i], decryptor, encoder)
+		ct_result[i] = Conv1(params, ct_f1, pt_w0, bias0_value, c_in_0, c_out_0, filters, F_H_out*F_W_out*filters, evaluator, decryptor, encoder, 9, 26*26*9)
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+
 		t2 := time.Now()
 		fmt.Println("Conv time: ", t2.Sub(t1))
+		t3 := time.Now()
 		for j := 0; j < c_out_0; j++ {
 			ct_result[i][j] = relu(params, ct_result[i][j], evaluator, decryptor, encoder)
 		}
-		// fmt.Println(ct_result[i].Level())
-		// ct_result[i] = relu(params, ct_result[i], evaluator, decryptor, encoder)
-		t3 := time.Now()
-		fmt.Println("ReLU time: ", t3.Sub(t2))
-		// fmt.Println(ct_result[i].Level())
-		for j := 0; j < c_out_0; j++ {
-			ct_result[i][j] = avg_pooling(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder)
-		}
 		t4 := time.Now()
-		// fmt.Println(ct_result[i].Level())
-		fmt.Println("Pooling time: ", t4.Sub(t3))
-		// printDebug(params, ct_result[i], decryptor, encoder)
-		for j := 0; j < c_out_0; j++ {
-			ct_result[i][j] = rot_for_rep_conv(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder)
-		}
+		fmt.Println("ReLU time: ", t4.Sub(t3))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+
+		// // fmt.Println(ct_result[i].Level())
+		// // ct_result[i] = relu(params, ct_result[i], evaluator, decryptor, encoder)
+		// t3 := time.Now()
+		// fmt.Println("ReLU time: ", t3.Sub(t2))
+		// // fmt.Println(ct_result[i].Level())
 		t5 := time.Now()
-		fmt.Println("Replication time: ", t5.Sub(t4))
+		for j := 0; j < c_out_0; j++ {
+			ct_result[i][j] = avg_pooling(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder, rots_for_pool_1, 18, 13*13*18)
+		}
+		t6 := time.Now()
+		fmt.Println("AvgPooling time: ", t6.Sub(t5))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+
+		// t4 := time.Now()
+		// // fmt.Println(ct_result[i].Level())
+		// fmt.Println("Pooling time: ", t4.Sub(t3))
+		// // printDebug(params, ct_result[i], decryptor, encoder)
+		t7 := time.Now()
+		for j := 0; j < c_out_0; j++ {
+			ct_result[i][j] = rot_for_rep_conv(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder, rots_for_replica_1)
+		}
+		t8 := time.Now()
+		fmt.Println("Rot for replica time: ", t8.Sub(t7))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+		// t5 := time.Now()
+		// fmt.Println("Replication time: ", t5.Sub(t4))
 		// ct_result[i].Rescale()
 		// printDebug(params, ct_result[i], decryptor, encoder)
 		//conv again
-		ct_result[i] = Conv(params, ct_result[i], pt_w1, pt_b1, c_in_0, c_out_0, filters, F_H_out*F_W_out*filters, evaluator, decryptor, encoder)
-		// printDebug(params, ct_result[i], decryptor, encoder)
+		fmt.Println("**************Second layer**********************")
+		t9 := time.Now()
+		ct_result[i] = Conv2(params, ct_result[i], pt_w1, bias1_value, c_in_1, c_out_1, filters, F_H_out*F_W_out*filters, evaluator, decryptor, encoder, 18, 13*13*18)
+		t10 := time.Now()
+		fmt.Println("Second conv time: ", t10.Sub(t9))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+		t11 := time.Now()
+		for j := 0; j < c_out_1; j++ {
+			ct_result[i][j] = relu(params, ct_result[i][j], evaluator, decryptor, encoder)
+		}
+		t12 := time.Now()
+		fmt.Println("ReLU time: ", t12.Sub(t11))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+		t13 := time.Now()
+		for j := 0; j < c_out_1; j++ {
+			ct_result[i][j] = avg_pooling2(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder, rots_for_pool_2, 18, 13*13*18)
+		}
+		t14 := time.Now()
+		fmt.Println("AvgPooling time: ", t14.Sub(t13))
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// printDebug(params, ct_result[i][3], decryptor, encoder)
+		t15 := time.Now()
+		result := FC(params, ct_result[i], 10, pt_fc, fc_bias, 4, evaluator, decryptor, encoder)
+		t16 := time.Now()
+		fmt.Println("FC time: ", t16.Sub(t15))
+		printResult(params, result[0], decryptor, encoder)
+		printResult(params, result[1], decryptor, encoder)
+		printResult(params, result[2], decryptor, encoder)
+		printResult(params, result[3], decryptor, encoder)
+		printResult(params, result[4], decryptor, encoder)
+		printResult(params, result[5], decryptor, encoder)
+		printResult(params, result[6], decryptor, encoder)
+		printResult(params, result[7], decryptor, encoder)
+		printResult(params, result[8], decryptor, encoder)
+		printResult(params, result[9], decryptor, encoder)
+
+		// printDebug(params, ct_result[i][0], decryptor, encoder)
+		// printDebug(params, ct_result[i][1], decryptor, encoder)
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
+		// for j := 0; j < c_out_1; j++ {
+		// 	ct_result[i][j] = rot_for_rep_conv(params, ct_result[i][j], F_H_out*F_W_out*filters, evaluator, decryptor, encoder)
+		// }
+		// fmt.Println("channel: ", len(ct_result[i]))
+		// printDebug(params, ct_result[i][2], decryptor, encoder)
 
 	}
 
 }
-func rot_for_rep_conv(params ckks.Parameters, data *ckks.Ciphertext, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (ct *ckks.Ciphertext) {
-	rots_for_pool := []int{17, 34, 231, 248, 265, 462, 479, 496}
+func FC(params ckks.Parameters, data []*ckks.Ciphertext, output int, fc_pt [][]*ckks.Plaintext, bias []float64, in_channel int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result_ct []*ckks.Ciphertext) {
+	result_ct = make([]*ckks.Ciphertext, output)
+	for i := 0; i < output; i++ {
+		result_ct[i] = combine_channels_fc(params, data, fc_pt[i], in_channel, evaluator, decryptor, encoder)
+		evaluator.AddConst(result_ct[i], bias[i], result_ct[i])
+		evaluator.Rescale(result_ct[i], params.DefaultScale(), result_ct[i])
+	}
+	return result_ct
+}
+
+func combine_channels_fc(params ckks.Parameters, data []*ckks.Ciphertext, fc_value []*ckks.Plaintext, in_channel int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result *ckks.Ciphertext) {
+	result = fc(params, data[0], fc_value[0], 36, 24, evaluator, decryptor, encoder)
+	for i := 1; i < in_channel; i++ {
+		tmp2 := fc(params, data[i], fc_value[i], 36, 24, evaluator, decryptor, encoder)
+		evaluator.Add(result, tmp2, result)
+	}
+	return result
+}
+
+func fc(params ckks.Parameters, data *ckks.Ciphertext, fc_pt *ckks.Plaintext, rot_steps int, rot_times int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (mulres *ckks.Ciphertext) {
+	mulres = evaluator.MulNew(data, fc_pt)
+	evaluator.Rescale(mulres, params.DefaultScale(), mulres)
+	tmp := evaluator.RotateNew(mulres, 36)
+	evaluator.Add(mulres, tmp, mulres)
+	for i := 1; i < 5; i++ {
+		evaluator.Rotate(tmp, 36, tmp)
+		evaluator.Add(mulres, tmp, mulres)
+	}
+	tmp1 := evaluator.RotateNew(mulres, 936)
+	evaluator.Add(mulres, tmp1, mulres)
+	for i := 2; i < 5; i++ {
+		evaluator.Rotate(tmp1, 936, tmp1)
+		evaluator.Add(mulres, tmp1, mulres)
+	}
+	// for i := 0; i < 13; i++ {
+	// 	for j := 0; j < 5; j++ {
+	// 		mask[i*13*step+j*2*step] = complex(1, 0)
+	// 	}
+	// }
+	return mulres
+}
+
+func rot_for_rep_conv(params ckks.Parameters, data *ckks.Ciphertext, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder, rots_for_pool []int) (ct *ckks.Ciphertext) {
+	// rots_for_pool := []int{17, 34, 231, 248, 265, 462, 479, 496}
 	dup := evaluator.RotateNew(data, size)
 	evaluator.Add(dup, data, dup)
 	for i := 0; i < len(rots_for_pool); i++ {
@@ -415,9 +692,8 @@ func rot_for_rep_conv(params ckks.Parameters, data *ckks.Ciphertext, size int, e
 	// evaluator.MultByConst(dup, 0.25, dup)
 	return dup
 }
-
-func avg_pooling(params ckks.Parameters, data *ckks.Ciphertext, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (ct *ckks.Ciphertext) {
-	rots_for_pool := []int{9, 234, 243}
+func avg_pooling(params ckks.Parameters, data *ckks.Ciphertext, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder, rots_for_pool []int, step int, size2 int) (ct *ckks.Ciphertext) {
+	// rots_for_pool := []int{9, 234, 243} //for first conv
 	dup := evaluator.RotateNew(data, size)
 	evaluator.Add(dup, data, dup)
 	for i := 0; i < len(rots_for_pool); i++ {
@@ -425,16 +701,60 @@ func avg_pooling(params ckks.Parameters, data *ckks.Ciphertext, size int, evalua
 		evaluator.Add(dup, tmp, dup)
 	}
 	mask := make([]complex128, size)
-	for i := 0; i < size; i++ {
-		if i%18 == 0 {
-			mask[i] = complex(1, 0)
-		} else {
-			mask[i] = complex(0, 0)
+	// for i := 0; i < size2; i++ {
+	// 	if i%18 == 0 {
+	// 		if (i/(13*18))%2 == 0 {
+	// 			mask[i] = complex(1, 0)
+	// 		} else {
+	// 			mask[i] = complex(0, 0)
+	// 		}
+	// 	} else {
+	// 		mask[i] = complex(0, 0)
+	// 	}
+	// }
+	for i := 0; i < 26; i++ {
+		if i%2 == 0 {
+			for j := 0; j < 13; j++ {
+				mask[i*13*18+j*18] = complex(0, 0)
+			}
 		}
 	}
+
 	pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
 	evaluator.Mul(dup, pt_mask, dup)
+	evaluator.Rescale(dup, params.DefaultScale(), dup)
 	evaluator.MultByConst(dup, 0.25, dup)
+	evaluator.Rescale(dup, params.DefaultScale(), dup)
+	return dup
+}
+
+func avg_pooling2(params ckks.Parameters, data *ckks.Ciphertext, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder, rots_for_pool []int, step int, size2 int) (ct *ckks.Ciphertext) {
+	// rots_for_pool := []int{9, 234, 243} //for first conv
+	dup := evaluator.RotateNew(data, size)
+	evaluator.Add(dup, data, dup)
+	for i := 0; i < len(rots_for_pool); i++ {
+		tmp := evaluator.RotateNew(data, rots_for_pool[i])
+		evaluator.Add(dup, tmp, dup)
+	}
+	mask := make([]complex128, size)
+
+	for i := 0; i < 26; i++ {
+		if i%4 == 0 {
+			for j := 0; j < 5; j++ {
+				mask[i*26*9+j*36] = 0
+			}
+		}
+	}
+	// for i := 0; i < 13; i++ {
+	// 	for j := 0; j < 5; j++ {
+	// 		mask[i*13*step+j*2*step] = complex(1, 0)
+	// 	}
+	// }
+	pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+	evaluator.Mul(dup, pt_mask, dup)
+	evaluator.Rescale(dup, params.DefaultScale(), dup)
+	evaluator.MultByConst(dup, 0.25, dup)
+	evaluator.Rescale(dup, params.DefaultScale(), dup)
 	return dup
 }
 
@@ -451,32 +771,10 @@ func tree_cipher(params ckks.Parameters, data *ckks.Ciphertext, coeffs []float64
 	// rs := make([]*ckks.Ciphertext, degree+1)
 	// fmt.Println(degree)
 	powers[0] = data.CopyNew()
-	// levels := make([]int, degree+1)
-	// levels[1] = 0
-	// levels[0] = 0
-
-	// for i := 2; i <= degree; i++ {
-	// 	minlevel := i
-	// 	cand := -1
-	// 	for j := 1; j <= i/2; j++ {
-	// 		k := i - j
-	// 		newlevel := Max(levels[j], levels[k]) + 1
-	// 		if newlevel < minlevel {
-	// 			cand = j
-	// 			minlevel = newlevel
-	// 		}
-	// 	}
-	// 	levels[i] = minlevel
-
-	// 	// temp := powers[cand].CopyNew()
-	// 	fmt.Println("i", i)
-	// 	fmt.Println("cand", cand)
-	// 	evaluator.Mul(powers[cand], powers[i-cand], powers[i])
-	// 	evaluator.Relinearize(powers[i], powers[i])
-	// }
 
 	powers[1] = evaluator.MulNew(powers[0], powers[0])
 	evaluator.Relinearize(powers[1], powers[1])
+	// printDebug(params, powers[1], decryptor, encoder)
 
 	for i := 1; i <= degree; i++ {
 		// fmt.Println(i)
@@ -484,58 +782,136 @@ func tree_cipher(params ckks.Parameters, data *ckks.Ciphertext, coeffs []float64
 		// rs[i] = evaluator.MultByConstNew(powers[i], 1)
 		// evaluator.Rescale(powers[i], params.DefaultScale(), powers[i])
 	}
-	for i := 1; i < degree; i++ {
-		evaluator.Add(powers[0], powers[i], powers[1])
-	}
-	ct = evaluator.AddConstNew(powers[1], coeffs[0])
+	// printDebug(params, powers[1], decryptor, encoder)
+	evaluator.Rescale(powers[0], params.DefaultScale(), powers[0])
+	evaluator.Rescale(powers[1], params.DefaultScale(), powers[1])
+	// evaluator.DropLevel(powers[0], 6)
+	// fmt.Println("params")
+	// printDebug(params, powers[0], decryptor, encoder)
+	// printDebug(params, powers[1], decryptor, encoder)
+	ct = evaluator.AddNew(powers[0], powers[1])
+	// printDebug(params, ct, decryptor, encoder)
+	// for i := 1; i < degree; i++ {
+	// 	evaluator.Add(powers[0], powers[i], powers[1])
+	// }
+	// printDebug(params, ct, decryptor, encoder)
+	evaluator.AddConst(ct, coeffs[0], ct)
+	// printDebug(params, ct, decryptor, encoder)
 	return ct
 }
 func relu(params ckks.Parameters, data *ckks.Ciphertext, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result *ckks.Ciphertext) {
 	degree := 2
 	coeffs := make([]float64, degree+1)
 	coeffs[0] = 0.00001
-	coeffs[1] = 1.0
+	coeffs[1] = 0.00001
 	coeffs[2] = 1.0
 	result = tree_cipher(params, data, coeffs, degree, evaluator, decryptor, encoder)
 	return result
 }
-func Conv(params ckks.Parameters, data []*ckks.Ciphertext, weights [][]*ckks.Plaintext, bias [][]*ckks.Plaintext, channel_in int, channel_out int, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result_ct []*ckks.Ciphertext) {
+func Conv2(params ckks.Parameters, data []*ckks.Ciphertext, weights [][]*ckks.Plaintext, bias []float64, channel_in int, channel_out int, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder, step int, size2 int) (result_ct []*ckks.Ciphertext) {
 
 	result_ct = make([]*ckks.Ciphertext, channel_out)
 	for i := 0; i < channel_out; i++ {
-		result_ct[i] = combine_channels(params, data, weights[i], bias[i], channel_in, filters, size, evaluator, decryptor, encoder)
+		// fmt.Println(i)
+		result_ct[i] = combine_channels(params, data, weights[i], channel_in, filters, size, evaluator, decryptor, encoder)
+		evaluator.AddConst(result_ct[i], bias[i], result_ct[i])
+		mask := make([]complex128, size)
+		// for i := 0; i < size2; i++ {
+		// 	if i%step == 0 {
+		// 		m := (i / step) % 13
+		// 		if m == 11 || m == 12 || m == 10 {
+		// 			mask[i] = complex(0, 0)
+		// 		} else {
+		// 			mask[i] = complex(1, 0)
+		// 		}
+		// 	} else {
+		// 		mask[i] = complex(0, 0)
+		// 	}
+		// }
+		for i := 0; i < 26; i++ {
+			if i%2 == 0 {
+				for j := 0; j < 5; j++ {
+					mask[i*26*9+j*2*18] = 1
+				}
+			}
+		}
+		pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+		evaluator.Mul(result_ct[i], pt_mask, result_ct[i])
 	}
+
+	// result_ct[0] = combine_channels(params, data, weights[0], bias[0], channel_in, filters, size, evaluator, decryptor, encoder)
 	return result_ct
 }
 
-func combine_channels(params ckks.Parameters, data []*ckks.Ciphertext, weights []*ckks.Plaintext, bias []*ckks.Plaintext, channel_in int, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result *ckks.Ciphertext) {
-	result = conv(params, data[0], weights[0], bias[0], filters, size, evaluator, decryptor, encoder)
+func Conv1(params ckks.Parameters, data []*ckks.Ciphertext, weights [][]*ckks.Plaintext, bias []float64, channel_in int, channel_out int, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder, step int, size2 int) (result_ct []*ckks.Ciphertext) {
+
+	result_ct = make([]*ckks.Ciphertext, channel_out)
+	for i := 0; i < channel_out; i++ {
+		// fmt.Println(i)
+		result_ct[i] = combine_channels(params, data, weights[i], channel_in, filters, size, evaluator, decryptor, encoder)
+		evaluator.AddConst(result_ct[i], bias[i], result_ct[i])
+		mask := make([]complex128, size)
+		for i := 0; i < size2; i++ {
+			if i%step == 0 {
+				mask[i] = complex(1, 0)
+			} else {
+				mask[i] = complex(0, 0)
+			}
+		}
+		pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+		evaluator.Mul(result_ct[i], pt_mask, result_ct[i])
+	}
+
+	// result_ct[0] = combine_channels(params, data, weights[0], bias[0], channel_in, filters, size, evaluator, decryptor, encoder)
+	return result_ct
+}
+
+func combine_channels(params ckks.Parameters, data []*ckks.Ciphertext, weights []*ckks.Plaintext, channel_in int, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (result *ckks.Ciphertext) {
+	// printDebug(params, data[0], decryptor, encoder)
+	// printDebug(params, data[1], decryptor, encoder)
+	// printDebug(params, data[2], decryptor, encoder)
+	result = conv(params, data[0], weights[0], filters, size, evaluator, decryptor, encoder)
+	// printDebug(params, result, decryptor, encoder)
 	for j := 1; j < channel_in; j++ {
-		tmp := conv(params, data[j], weights[j], bias[j], filters, size, evaluator, decryptor, encoder)
+		tmp := conv(params, data[j], weights[j], filters, size, evaluator, decryptor, encoder)
+		// fmt.Println("tmp")
+		// fmt.Println(j)
+		// printDebug(params, tmp, decryptor, encoder)
 		evaluator.Add(result, tmp, result)
+		// printDebug(params, result, decryptor, encoder)
 	}
 	return result
 }
-func conv(params ckks.Parameters, data *ckks.Ciphertext, weights *ckks.Plaintext, bias *ckks.Plaintext, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (dup *ckks.Ciphertext) {
-	evaluator.Mul(data, weights, data)
-	dup = evaluator.RotateNew(data, size)
+func conv(params ckks.Parameters, data *ckks.Ciphertext, weights *ckks.Plaintext, filters int, size int, evaluator ckks.Evaluator, decryptor ckks.Decryptor, encoder ckks.Encoder) (dup *ckks.Ciphertext) {
+	// printDebug(params, data, decryptor, encoder)
+	mulres := evaluator.MulNew(data, weights)
+	// printDebug(params, data, decryptor, encoder)
+	evaluator.Rescale(mulres, params.DefaultScale(), mulres)
+	// printDebug(params, mulres, decryptor, encoder)
+	// evaluator.Relinearize(data, data)
+	dup = evaluator.RotateNew(mulres, size)
 	// values := encoder.Decode(decryptor.DecryptNew(dup), params.LogSlots())
-	evaluator.Add(dup, data, dup)
+	evaluator.Add(dup, mulres, dup)
 	for i := 1; i < filters; i++ {
-		tmp := evaluator.RotateNew(data, i)
+		tmp := evaluator.RotateNew(mulres, i)
 		evaluator.Add(dup, tmp, dup)
 	}
-	mask := make([]complex128, size)
-	for i := 0; i < size; i++ {
-		if i%9 == 0 {
-			mask[i] = complex(1, 0)
-		} else {
-			mask[i] = complex(0, 0)
-		}
-	}
-	pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
-	evaluator.Mul(dup, pt_mask, dup)
-	evaluator.Add(dup, bias, dup)
+	// printDebug(params, dup, decryptor, encoder)
+	// mask := make([]complex128, size)
+	// for i := 0; i < size; i++ {
+	// 	if i%9 == 0 {
+	// 		mask[i] = complex(1, 0)
+	// 	} else {
+	// 		mask[i] = complex(0, 0)
+	// 	}
+	// }
+	// pt_mask := encoder.EncodeNew(mask, params.MaxLevel(), params.DefaultScale(), params.LogSlots())
+	// evaluator.Mul(dup, pt_mask, dup)
+	// printDebug(params, dup, decryptor, encoder)
+	// evaluator.Relinearize(dup, dup)
+	// evaluator.Rescale(dup, params.DefaultScale(), dup)
+	// evaluator.Add(dup, bias, dup)
+	// printDebug(params, dup, decryptor, encoder)
 
 	// fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f...\n", values[0], values[1], values[2], values[3])
 	return dup
@@ -548,7 +924,7 @@ func printDebug(params ckks.Parameters, ciphertext *ckks.Ciphertext, decryptor c
 	fmt.Println()
 	fmt.Printf("Level: %d (logQ = %d)\n", ciphertext.Level(), params.LogQLvl(ciphertext.Level()))
 	fmt.Printf("Scale: 2^%f\n", math.Log2(ciphertext.Scale))
-	fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3])
+	fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3], valuesTest[4], valuesTest[5], valuesTest[6], valuesTest[7], valuesTest[8], valuesTest[9], valuesTest[10])
 	// fmt.Printf("ValuesWant: %6.10f %6.10f %6.10f %6.10f...\n", valuesWant[0], valuesWant[1], valuesWant[2], valuesWant[3])
 
 	// precStats := ckks.GetPrecisionStats(params, encoder, nil, valuesWant, valuesTest, params.LogSlots(), 0)
@@ -557,7 +933,33 @@ func printDebug(params ckks.Parameters, ciphertext *ckks.Ciphertext, decryptor c
 	fmt.Println(valuesTest[0])
 	fmt.Println(valuesTest[18])
 	fmt.Println(valuesTest[36])
-	fmt.Println(valuesTest[234])
+	fmt.Println(valuesTest[756])
+	fmt.Println(valuesTest[774])
+	fmt.Println(valuesTest[1687])
+	fmt.Println(valuesTest[1688])
+	// for i := 0; i < 5000; i++ {
+	// 	fmt.Println(valuesTest[i])
+	// }
+
+	return
+}
+func printResult(params ckks.Parameters, ciphertext *ckks.Ciphertext, decryptor ckks.Decryptor, encoder ckks.Encoder) (valuesTest []complex128) {
+
+	valuesTest = encoder.Decode(decryptor.DecryptNew(ciphertext), params.LogSlots())
+
+	fmt.Println()
+	fmt.Printf("Level: %d (logQ = %d)\n", ciphertext.Level(), params.LogQLvl(ciphertext.Level()))
+	fmt.Printf("Scale: 2^%f\n", math.Log2(ciphertext.Scale))
+	// fmt.Printf("ValuesTest: %6.10f %6.10f %6.10f %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f  %6.10f...\n", valuesTest[0], valuesTest[1], valuesTest[2], valuesTest[3], valuesTest[4], valuesTest[5], valuesTest[6], valuesTest[7], valuesTest[8], valuesTest[9], valuesTest[10])
+	// fmt.Printf("ValuesWant: %6.10f %6.10f %6.10f %6.10f...\n", valuesWant[0], valuesWant[1], valuesWant[2], valuesWant[3])
+
+	// precStats := ckks.GetPrecisionStats(params, encoder, nil, valuesWant, valuesTest, params.LogSlots(), 0)
+
+	// fmt.Println(precStats.String())
+	fmt.Println(valuesTest[0])
+	// fmt.Println(valuesTest[18])
+	// fmt.Println(valuesTest[36])
+	// fmt.Println(valuesTest[198])
 
 	return
 }

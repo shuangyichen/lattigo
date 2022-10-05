@@ -322,8 +322,9 @@ func main() {
 			prediction_res := Decrypt(params, res_ct, decryptor, encoder)
 			if prediction_res == label {
 				prediction_correct += 1
-				fmt.Println("Prediction result: ", res_ct)
+				fmt.Println("Prediction result: ", prediction_res)
 				fmt.Println("Label: ", label)
+				fmt.Println("Correct Prediction:", prediction_correct)
 			}
 			// printDebug(params, ct_result[i], decryptor, encoder)
 

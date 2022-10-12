@@ -398,8 +398,8 @@ func main() {
 
 		// x := xs[1]
 		x := make([][]complex128, sample_num)
-		x[0] = xs[300+i]
-		label := ys[300+i]
+		x[0] = xs[400+i]
+		label := ys[400+i]
 		// x[0] = make([]complex128, 784)
 		// for i := 0; i < len(x[0]); i++ {
 		// 	x[0][i] = complex(float64(i), 0)

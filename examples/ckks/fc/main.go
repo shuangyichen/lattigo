@@ -215,7 +215,7 @@ func main() {
 	sample_num := 1
 	samples := 50
 	xs, y := ReadCsv("mnist_test.csv", samples)
-	for m := 0; m < samples; m++ {
+	for m := 0; m < 10; m++ {
 		fmt.Println("Processing ", m, "-th sample")
 		x := make([][]complex128, 1)
 		x[0] = xs[m]
@@ -320,10 +320,12 @@ func main() {
 			// fmt.Println(ct_f1[i].Level())
 			res_ct := FC(params, ct_f1[i], pt_w, bias_value, 784, 784, evaluator, decryptor, encoder)
 			prediction_res := Decrypt(params, res_ct, decryptor, encoder)
+			fmt.Println("Prediction result: ", prediction_res)
+			fmt.Println("Label: ", label)
 			if prediction_res == label {
 				prediction_correct += 1
-				fmt.Println("Prediction result: ", prediction_res)
-				fmt.Println("Label: ", label)
+				// fmt.Println("Prediction result: ", prediction_res)
+				// fmt.Println("Label: ", label)
 				fmt.Println("Correct Prediction:", prediction_correct)
 			}
 			// printDebug(params, ct_result[i], decryptor, encoder)

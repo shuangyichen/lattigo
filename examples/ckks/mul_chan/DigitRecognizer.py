@@ -14,7 +14,7 @@ def recognize_digit():
     x, y, w, h = 0, 0, frame_size, frame_size
 
     # Keras Model Initialization
-    model = keras.models.load_model('cnn-mnist-model.h5')
+    model = keras.models.load_model('cnn_new2.h5')
 
     for idx,i in enumerate(model.layers):
         # weight = i.get_weights()

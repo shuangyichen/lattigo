@@ -159,27 +159,27 @@ func handleClientcpk(connections []net.Conn, idx int) {
 	fmt.Println("Sending client index")
 
 	/////// Receive shares and generate collective public key
-	message, err := bufio.NewReader(conn).ReadString('\n')
-	fmt.Println("Receiving client pk shares")
-	if err != nil {
-		panic(err)
-	}
-	sharesArr := strings.Split(message, "&")
-	// fmt.Println(len(sharesArr))
-	sharesQArr := sharesArr[0]
-	sharesPArr := sharesArr[1]
-
-	cpkgSharesQStr[idx] = sharesQArr
-	cpkgSharesPStr[idx] = sharesPArr
-
-	// buf := make([]byte, 1)
-	// len, err := conn.Read(buf)
+	// message, err := bufio.NewReader(conn).ReadString('\n')
+	// fmt.Println("Receiving client pk shares")
 	// if err != nil {
-	// 	fmt.Printf("Error reading: %#v\n", err)
-	// 	return
+	// 	panic(err)
 	// }
-	// fmt.Println(len)
-	// cpkgShares[idx].UnmarshalBinary(buf[:len])
+	// sharesArr := strings.Split(message, "&")
+	// // fmt.Println(len(sharesArr))
+	// sharesQArr := sharesArr[0]
+	// sharesPArr := sharesArr[1]
+
+	// cpkgSharesQStr[idx] = sharesQArr
+	// cpkgSharesPStr[idx] = sharesPArr
+
+	buf := make([]byte, 1)
+	len, err := conn.Read(buf)
+	if err != nil {
+		fmt.Printf("Error reading: %#v\n", err)
+		return
+	}
+	fmt.Println(len)
+	cpkgShares[idx].UnmarshalBinary(buf[:len])
 	// buf[:len]
 	cpkgWrite[idx].Unlock()
 	pkStrWrite[idx].Lock()
@@ -262,24 +262,22 @@ func ServerSetup(serverAddress string, numPeers int) {
 	// cpkgShares := make([]dckks.CKGShare, numPeers)
 
 	for peerIdx := range clientIPs {
-		cpkgShares[peerIdx] = &drlwe.CKGShare{
-			Value: ringqp.Poly{},
-		}
-		// fmtPrintln(clientIPs[peerIdx])
-		coeffsQ := polyCoeffsDecode(cpkgSharesQStr[peerIdx])
-		coeffsP := polyCoeffsDecode(cpkgSharesPStr[peerIdx])
+		// cpkgShares[peerIdx] = &drlwe.CKGShare{
+		// 	Value: ringqp.Poly{},
+		// }
+		// // fmtPrintln(clientIPs[peerIdx])
+		// coeffsQ := polyCoeffsDecode(cpkgSharesQStr[peerIdx])
+		// coeffsP := polyCoeffsDecode(cpkgSharesPStr[peerIdx])
 
-		poly := ringqp.Poly{
-			Q: &ring.Poly{},
-			P: &ring.Poly{},
-		}
-		// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
-		poly.P.Coeffs = coeffsP
-		poly.Q.Coeffs = coeffsQ
-		// ringqp.Poly{{Q:coeffsQ,P:coeffsP}}
-		// poly[0] = ring.Poly{Coeffs:coeffsQ}
+		// poly := ringqp.Poly{
+		// 	Q: &ring.Poly{},
+		// 	P: &ring.Poly{},
+		// }
+		// // poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+		// poly.P.Coeffs = coeffsP
+		// poly.Q.Coeffs = coeffsQ
 
-		cpkgShares[peerIdx].Value = poly
+		// cpkgShares[peerIdx].Value = poly
 
 		ckg.AggregateShare(cpkgShares[peerIdx], ckgCombined, ckgCombined)
 
@@ -417,24 +415,24 @@ func ClientSetup(serverAddress string) {
 	p.GenShare(p.s, crp, p.s1)
 	fmt.Println("Gen pk")
 
-	toSendString := ""
-	toSendString += polyCoeffsEncode(p.s1.Value.Q.Coeffs)
-	toSendString += "&"
-	toSendString += polyCoeffsEncode(p.s1.Value.P.Coeffs)
+	// toSendString := ""
+	// toSendString += polyCoeffsEncode(p.s1.Value.Q.Coeffs)
+	// toSendString += "&"
+	// toSendString += polyCoeffsEncode(p.s1.Value.P.Coeffs)
 
-	toSendString += "\n"
-	fmt.Println("Gen sending strings")
-	// pk_data, err := p.s1.MarshalBinary()
-	// fmt.Println(len(pk_data))
-	// n, err := conn.Write(pk_data)
-	// fmt.Println(n)
-	// if err != nil {
-	// 	fmt.Printf("Error writing: %#v\n", err)
-	// 	return
-	// }
+	// toSendString += "\n"
+	// fmt.Println("Gen sending strings")
+	pk_data, err := p.s1.MarshalBinary()
+	fmt.Println(len(pk_data))
+	n, err := conn.Write(pk_data)
+	fmt.Println(n)
+	if err != nil {
+		fmt.Printf("Error writing: %#v\n", err)
+		return
+	}
 	// n, err := conn.Write([]byte(pk_data))
 	// fmt.Println(n)
-	conn.Write([]byte(toSendString))
+	// conn.Write([]byte(toSendString))
 	_, err = bufio.NewReader(conn).ReadString('\n')
 	if err != nil {
 		panic(err)
@@ -503,11 +501,11 @@ func main() {
 			inputs[i] = rand.Float64()
 		}
 		fmt.Println("Client setup")
-		ClientSetup("localhost:8080")
+		ClientSetup("10.30.8.11:5000")
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
 		fmt.Println("Server setup")
-		ServerSetup("localhost:8080", numPeers)
+		ServerSetup("10.30.8.11:5000", numPeers)
 		// serverPhase2("localhost:8080", numPeers, robust, 0.5, logDegree, scale, inLen)
 	}
 }

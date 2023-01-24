@@ -49,8 +49,15 @@ var crtgWrite []sync.Mutex
 var rtStrWrite []sync.Mutex
 var rtdone []sync.Mutex
 var rotKeyStr string
+var crkgR1Str string
 var crtgSharesQStr [][][]string
 var crtgSharesPStr [][][]string
+
+var crkgSharesQStr [][][][]string
+var crkgSharesPStr [][][][]string
+var crkgWrite []sync.Mutex
+var rkgdone []sync.Mutex
+var rlkr1StrWrite []sync.Mutex
 
 // func (c *SafeStringArray) Update(str string) {
 // 	c.mu.Lock()
@@ -149,6 +156,87 @@ func handleClientrot(connections []net.Conn, idx int) {
 
 }
 
+func handleClientrrlkr1(connections []net.Conn, idx int) {
+	//////
+	fmt.Println("Handling client")
+	numPeers := len(connections)
+	conn := connections[idx]
+	conn.Write([]byte(strconv.Itoa(idx) + " " + strconv.Itoa(numPeers) + "\n"))
+	fmt.Println("Sending client index")
+	///////
+	// conn := connections[idx]
+	message, err := bufio.NewReader(conn).ReadString('\n')
+	fmt.Println("Receiving client rot key shares")
+	if err != nil {
+		panic(err)
+	}
+	rlksharesArr := strings.Split(message, "*")
+	rlksharesArr = rlksharesArr[0 : len(rlksharesArr)-1]
+	rows := len(rlksharesArr)
+	// fmt.Println(rows) //4
+	crkgSharesQStr[idx] = make([][][]string, rows)
+	crkgSharesPStr[idx] = make([][][]string, rows)
+	for row := range rlksharesArr {
+		rlksharesArrtmp := strings.Split(rlksharesArr[row], "@")
+		rlksharesArrtmp = rlksharesArrtmp[0 : len(rlksharesArrtmp)-1]
+		crkgSharesQStr[idx][row] = make([][]string, len(rlksharesArrtmp))
+		crkgSharesPStr[idx][row] = make([][]string, len(rlksharesArrtmp))
+		// fmt.Println(len(rotsharesArrtmp)) //0
+		for col := range rlksharesArrtmp {
+			rlksharesArrtmp2 := strings.Split(rlksharesArr[row], "#")
+			rlksharesArrtmp2 = rlksharesArrtmp2[0 : len(rlksharesArrtmp2)-1]
+			crkgSharesQStr[idx][row][col] = make([]string, len(rlksharesArrtmp2))
+			crkgSharesPStr[idx][row][col] = make([]string, len(rlksharesArrtmp2))
+			for id := range rlksharesArrtmp2 {
+				rlksharesArrtmp3 := strings.Split(rlksharesArrtmp2[id], "&")
+				crkgSharesQStr[idx][row][col][id] = rlksharesArrtmp3[0]
+				crkgSharesPStr[idx][row][col][id] = rlksharesArrtmp3[1]
+			}
+
+		}
+	}
+	crkgWrite[idx].Unlock()
+	rlkr1StrWrite[idx].Unlock()
+	conn.Write([]byte(crkgR1Str))
+
+}
+
+func handleClientrrlkr2(connections []net.Conn, idx int) {
+
+	conn := connections[idx]
+	message, err := bufio.NewReader(conn).ReadString('\n')
+	fmt.Println("Receiving client rot key shares")
+	if err != nil {
+		panic(err)
+	}
+	rlksharesArr := strings.Split(message, "*")
+	rlksharesArr = rlksharesArr[0 : len(rlksharesArr)-1]
+	rows := len(rlksharesArr)
+	// fmt.Println(rows) //4
+	crkgSharesQStr[idx] = make([][][]string, rows)
+	crkgSharesPStr[idx] = make([][][]string, rows)
+	for row := range rlksharesArr {
+		rlksharesArrtmp := strings.Split(rlksharesArr[row], "@")
+		rlksharesArrtmp = rlksharesArrtmp[0 : len(rlksharesArrtmp)-1]
+		crkgSharesQStr[idx][row] = make([][]string, len(rlksharesArrtmp))
+		crkgSharesPStr[idx][row] = make([][]string, len(rlksharesArrtmp))
+		// fmt.Println(len(rotsharesArrtmp)) //0
+		for col := range rlksharesArrtmp {
+			rlksharesArrtmp2 := strings.Split(rlksharesArr[row], "#")
+			rlksharesArrtmp2 = rlksharesArrtmp2[0 : len(rlksharesArrtmp2)-1]
+			crkgSharesQStr[idx][row][col] = make([]string, len(rlksharesArrtmp2))
+			crkgSharesPStr[idx][row][col] = make([]string, len(rlksharesArrtmp2))
+			for id := range rlksharesArrtmp2 {
+				rlksharesArrtmp3 := strings.Split(rlksharesArrtmp2[id], "&")
+				crkgSharesQStr[idx][row][col][id] = rlksharesArrtmp3[0]
+				crkgSharesPStr[idx][row][col][id] = rlksharesArrtmp3[1]
+			}
+
+		}
+	}
+	crkgWrite[idx].Unlock()
+}
+
 func handleClientcpk(connections []net.Conn, idx int) {
 
 	////// transmit the index of the client and number of peers
@@ -159,27 +247,27 @@ func handleClientcpk(connections []net.Conn, idx int) {
 	fmt.Println("Sending client index")
 
 	/////// Receive shares and generate collective public key
-	// message, err := bufio.NewReader(conn).ReadString('\n')
-	// fmt.Println("Receiving client pk shares")
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// sharesArr := strings.Split(message, "&")
-	// // fmt.Println(len(sharesArr))
-	// sharesQArr := sharesArr[0]
-	// sharesPArr := sharesArr[1]
-
-	// cpkgSharesQStr[idx] = sharesQArr
-	// cpkgSharesPStr[idx] = sharesPArr
-
-	buf := make([]byte, 1)
-	len, err := conn.Read(buf)
+	message, err := bufio.NewReader(conn).ReadString('\n')
+	fmt.Println("Receiving client pk shares")
 	if err != nil {
-		fmt.Printf("Error reading: %#v\n", err)
-		return
+		panic(err)
 	}
-	fmt.Println(len)
-	cpkgShares[idx].UnmarshalBinary(buf[:len])
+	sharesArr := strings.Split(message, "&")
+	// fmt.Println(len(sharesArr))
+	sharesQArr := sharesArr[0]
+	sharesPArr := sharesArr[1]
+
+	cpkgSharesQStr[idx] = sharesQArr
+	cpkgSharesPStr[idx] = sharesPArr
+
+	// buf := make([]byte, 1)
+	// len, err := conn.Read(buf)
+	// if err != nil {
+	// 	fmt.Printf("Error reading: %#v\n", err)
+	// 	return
+	// }
+	// fmt.Println(len)
+	// cpkgShares[idx].UnmarshalBinary(buf[:len])
 	// buf[:len]
 	cpkgWrite[idx].Unlock()
 	pkStrWrite[idx].Lock()
@@ -215,7 +303,7 @@ func ServerSetup(serverAddress string, numPeers int) {
 	ckksParams := paramSet.SchemeParams
 	params, err := ckks.NewParametersFromLiteral(ckksParams)
 	ckg := dckks.NewCKGProtocol(params)
-	prng, err := utils.NewKeyedPRNG([]byte{'l', 'a', 't', 't', 'i', 'g', 'o'})
+	// prng, err := utils.NewKeyedPRNG([]byte{'l', 'a', 't', 't', 'i', 'g', 'o'})
 	cpkgShares = make([]*drlwe.CKGShare, numPeers)
 	for peerIdx := range cpkgShares {
 		cpkgShares[peerIdx] = ckg.AllocateShare()
@@ -225,130 +313,246 @@ func ServerSetup(serverAddress string, numPeers int) {
 	cpkgWrite = make([]sync.Mutex, numPeers)
 	done = make([]sync.Mutex, numPeers)
 	pkStrWrite = make([]sync.Mutex, numPeers)
+
 	crtgSharesQStr = make([][][]string, numPeers)
 	crtgSharesPStr = make([][][]string, numPeers)
 	crtgWrite = make([]sync.Mutex, numPeers)
 	// rtStrWrite = make([]sync.Mutex, numPeers)
 	rtdone = make([]sync.Mutex, numPeers)
-	rtgShares := make([]drlwe.RTGShare, numPeers)
+	// rtgShares := make([]drlwe.RTGShare, numPeers)
 
-	for peerIdx := range cpkgWrite {
-		pkStrWrite[peerIdx].Lock()
-		cpkgWrite[peerIdx].Lock()
-		done[peerIdx].Lock()
-		// crtgWrite[peerIdx].Lock()
-		// // rtStrWrite[peerIdx].Lock()
-		// rtdone[peerIdx].Lock()
-	}
-	for idx := 0; idx < numPeers; idx++ {
-		go handleClientcpk(clientIPs, idx)
-	}
+	crkgSharesQStr = make([][][][]string, numPeers)
+	crkgSharesPStr = make([][][][]string, numPeers)
+	crkgWrite = make([]sync.Mutex, numPeers)
+	// rtStrWrite = make([]sync.Mutex, numPeers)
+	rkgdone = make([]sync.Mutex, numPeers)
+	crkgWrite = make([]sync.Mutex, numPeers)
+	rkgShares := make([]drlwe.RKGShare, numPeers)
+	rlkr1StrWrite = make([]sync.Mutex, numPeers)
 
-	for peerIdx := range cpkgWrite {
-		cpkgWrite[peerIdx].Lock()
-		// crtgWrite[peerIdx].Lock()
-	}
-
-	//////////////////////////
-	// paramSet := bootstrapping.DefaultParametersSparse[2]
-	// ckksParams := paramSet.SchemeParams
-	// params, err := ckks.NewParametersFromLiteral(ckksParams)
-	// ckg := dckks.NewCKGProtocol(params)
-	// prng, err := utils.NewKeyedPRNG([]byte{'l', 'a', 't', 't', 'i', 'g', 'o'})
-	ckgCombined := ckg.AllocateShare()
-	// ringQP, _ := ring.NewRing(params.N(), append(params.Q(), params.P()...))
-	pk := ckks.NewPublicKey(params)
-	var _ drlwe.CollectivePublicKeyGenerator = dckks.NewCKGProtocol(params)
-	// cpkgShares := make([]dckks.CKGShare, numPeers)
-
-	for peerIdx := range clientIPs {
-		// cpkgShares[peerIdx] = &drlwe.CKGShare{
-		// 	Value: ringqp.Poly{},
-		// }
-		// // fmtPrintln(clientIPs[peerIdx])
-		// coeffsQ := polyCoeffsDecode(cpkgSharesQStr[peerIdx])
-		// coeffsP := polyCoeffsDecode(cpkgSharesPStr[peerIdx])
-
-		// poly := ringqp.Poly{
-		// 	Q: &ring.Poly{},
-		// 	P: &ring.Poly{},
-		// }
-		// // poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
-		// poly.P.Coeffs = coeffsP
-		// poly.Q.Coeffs = coeffsQ
-
-		// cpkgShares[peerIdx].Value = poly
-
-		ckg.AggregateShare(cpkgShares[peerIdx], ckgCombined, ckgCombined)
-
-	}
-	crp := ckg.SampleCRP(prng)
-	ckg.GenPublicKey(ckgCombined, crp, pk)
-	fmt.Println("Gen cpk server side")
-	publicKeyStr = ""
-	// pkContent := pk.Value
-
-	//////////////////////////
-	// for itemIdx := range pkContent {
-	publicKeyStr += polyCoeffsEncode(ckgCombined.Value.P.Coeffs) + "&" + polyCoeffsEncode(ckgCombined.Value.P.Coeffs) + "\n"
+	// for peerIdx := range cpkgWrite {
+	// 	pkStrWrite[peerIdx].Lock()
+	// 	cpkgWrite[peerIdx].Lock()
+	// 	done[peerIdx].Lock()
+	// 	// crtgWrite[peerIdx].Lock()
+	// 	// // rtStrWrite[peerIdx].Lock()
+	// 	// rtdone[peerIdx].Lock()
 	// }
-	// publicKeyStr += "\n"
-	for peerIdx := range cpkgWrite {
-		pkStrWrite[peerIdx].Unlock()
-	}
+	// for idx := 0; idx < numPeers; idx++ {
+	// 	go handleClientcpk(clientIPs, idx)
+	// }
 
-	for peerIdx := range done {
-		done[peerIdx].Lock()
-		// done[peerIdx].Unlock()
-	}
-	for peerIdx := range crtgWrite {
-		crtgWrite[peerIdx].Lock()
-	}
-	for idx := 0; idx < numPeers; idx++ {
-		go handleClientrot(clientIPs, idx)
-	}
-	for peerIdx := range cpkgWrite {
-		crtgWrite[peerIdx].Lock()
-		// crtgWrite[peerIdx].Lock()
-	}
+	// for peerIdx := range cpkgWrite {
+	// 	cpkgWrite[peerIdx].Lock()
+	// 	// crtgWrite[peerIdx].Lock()
+	// }
 
-	rtg := dckks.NewRotKGProtocol(params)
-	rtgCombined := rtg.AllocateShare()
-	galEl := params.GaloisElementForRowRotation()
-	rotKeySet := ckks.NewRotationKeySet(params, []uint64{galEl})
-	var _ drlwe.RotationKeyGenerator = dckks.NewRotKGProtocol(params)
-	for peerIdx := range clientIPs {
-		rtgShares[peerIdx] = drlwe.RTGShare{
-			Value: [][]ringqp.Poly{},
-		}
-		polyArr := make([][]ringqp.Poly, len(crtgSharesQStr[peerIdx]))
+	// //////////////////////////
 
-		for row := range crtgSharesQStr[peerIdx] {
-			polyArr[row] = make([]ringqp.Poly, len(crtgSharesQStr[peerIdx][row]))
-			for col := range crtgSharesQStr[peerIdx][row] {
-				coeffsQ := polyCoeffsDecode(crtgSharesQStr[peerIdx][row][col])
-				coeffsP := polyCoeffsDecode(crtgSharesPStr[peerIdx][row][col])
+	// ckgCombined := ckg.AllocateShare()
+	// pk := ckks.NewPublicKey(params)
+	// var _ drlwe.CollectivePublicKeyGenerator = dckks.NewCKGProtocol(params)
+	// // cpkgShares := make([]dckks.CKGShare, numPeers)
 
-				poly := ringqp.Poly{
-					Q: &ring.Poly{},
-					P: &ring.Poly{},
-				}
-				// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
-				poly.P.Coeffs = coeffsP
-				poly.Q.Coeffs = coeffsQ
-				polyArr[row][col] = poly
-			}
-		}
-		rtgShares[peerIdx].Value = polyArr
-		// fmt.Println("Rot key share aggregation")
-		rtg.AggregateShare(&rtgShares[peerIdx], rtgCombined, rtgCombined)
+	// for peerIdx := range clientIPs {
+	// 	cpkgShares[peerIdx] = &drlwe.CKGShare{
+	// 		Value: ringqp.Poly{},
+	// 	}
+	// 	// fmtPrintln(clientIPs[peerIdx])
+	// 	coeffsQ := polyCoeffsDecode(cpkgSharesQStr[peerIdx])
+	// 	coeffsP := polyCoeffsDecode(cpkgSharesPStr[peerIdx])
 
-	}
-	crp_rtg := rtg.SampleCRP(prng)
-	rtg.GenRotationKey(rtgCombined, crp_rtg, rotKeySet.Keys[galEl])
-	fmt.Println("Rot key aggregation")
+	// 	poly := ringqp.Poly{
+	// 		Q: &ring.Poly{},
+	// 		P: &ring.Poly{},
+	// 	}
+	// 	// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+	// 	poly.P.Coeffs = coeffsP
+	// 	poly.Q.Coeffs = coeffsQ
+	// 	// ringqp.Poly{{Q:coeffsQ,P:coeffsP}}
+	// 	// poly[0] = ring.Poly{Coeffs:coeffsQ}
+
+	// 	cpkgShares[peerIdx].Value = poly
+
+	// 	ckg.AggregateShare(cpkgShares[peerIdx], ckgCombined, ckgCombined)
+
+	// }
+	// crp := ckg.SampleCRP(prng)
+	// ckg.GenPublicKey(ckgCombined, crp, pk)
+	// fmt.Println("Gen cpk server side")
+	// publicKeyStr = ""
+
+	// publicKeyStr += polyCoeffsEncode(ckgCombined.Value.P.Coeffs) + "&" + polyCoeffsEncode(ckgCombined.Value.P.Coeffs) + "\n"
+
+	// for peerIdx := range cpkgWrite {
+	// 	pkStrWrite[peerIdx].Unlock()
+	// }
+
+	// for peerIdx := range done {
+	// 	done[peerIdx].Lock()
+	// 	// done[peerIdx].Unlock()
+	// }
+	// for peerIdx := range crtgWrite {
+	// 	crtgWrite[peerIdx].Lock()
+	// }
+	// for idx := 0; idx < numPeers; idx++ {
+	// 	go handleClientrot(clientIPs, idx)
+	// }
+	// for peerIdx := range cpkgWrite {
+	// 	crtgWrite[peerIdx].Lock()
+	// 	// crtgWrite[peerIdx].Lock()
+	// }
+
+	// rtg := dckks.NewRotKGProtocol(params)
+	// rtgCombined := rtg.AllocateShare()
+	// galEl := params.GaloisElementForRowRotation()
+	// rotKeySet := ckks.NewRotationKeySet(params, []uint64{galEl})
+	// var _ drlwe.RotationKeyGenerator = dckks.NewRotKGProtocol(params)
+	// for peerIdx := range clientIPs {
+	// 	rtgShares[peerIdx] = drlwe.RTGShare{
+	// 		Value: [][]ringqp.Poly{},
+	// 	}
+	// 	polyArr := make([][]ringqp.Poly, len(crtgSharesQStr[peerIdx]))
+
+	// 	for row := range crtgSharesQStr[peerIdx] {
+	// 		polyArr[row] = make([]ringqp.Poly, len(crtgSharesQStr[peerIdx][row]))
+	// 		for col := range crtgSharesQStr[peerIdx][row] {
+	// 			coeffsQ := polyCoeffsDecode(crtgSharesQStr[peerIdx][row][col])
+	// 			coeffsP := polyCoeffsDecode(crtgSharesPStr[peerIdx][row][col])
+
+	// 			poly := ringqp.Poly{
+	// 				Q: &ring.Poly{},
+	// 				P: &ring.Poly{},
+	// 			}
+	// 			// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+	// 			poly.P.Coeffs = coeffsP
+	// 			poly.Q.Coeffs = coeffsQ
+	// 			polyArr[row][col] = poly
+	// 		}
+	// 	}
+	// 	rtgShares[peerIdx].Value = polyArr
+	// 	// fmt.Println("Rot key share aggregation")
+	// 	rtg.AggregateShare(&rtgShares[peerIdx], rtgCombined, rtgCombined)
+
+	// }
+	// crp_rtg := rtg.SampleCRP(prng)
+	// rtg.GenRotationKey(rtgCombined, crp_rtg, rotKeySet.Keys[galEl])
+	// fmt.Println("Rot key aggregation")
 
 	// rotKeyStr = ""
+
+	for peerIdx := range crkgWrite {
+		crkgWrite[peerIdx].Lock()
+		rlkr1StrWrite[peerIdx].Lock()
+	}
+	for idx := 0; idx < numPeers; idx++ {
+		go handleClientrrlkr1(clientIPs, idx)
+	}
+	for peerIdx := range crkgWrite {
+		crkgWrite[peerIdx].Lock()
+		// crtgWrite[peerIdx].Lock()
+	}
+
+	rkg := dckks.NewRKGProtocol(params)
+	_, rkg1Combined, rkg2Combined := rkg.AllocateShare()
+	// galEl := params.GaloisElementForRowRotation()
+	// rotKeySet := ckks.NewRotationKeySet(params, []uint64{galEl})
+	// var _ drlwe.RotationKeyGenerator = dckks.NewRotKGProtocol(params)
+	for peerIdx := range clientIPs {
+		rkgShares[peerIdx] = drlwe.RKGShare{
+			Value: [][][2]ringqp.Poly{},
+		}
+		polyArr := make([][][2]ringqp.Poly, len(crkgSharesQStr[peerIdx]))
+
+		for row := range crkgSharesQStr[peerIdx] {
+			polyArr[row] = make([][2]ringqp.Poly, len(crkgSharesQStr[peerIdx][row]))
+			for col := range crkgSharesQStr[peerIdx][row] {
+				// polyArr[row][col] = make([]ringqp.Poly, len(crkgSharesQStr[peerIdx][row][col]))
+				for id := range crkgSharesQStr[peerIdx][row][col] {
+					coeffsQ := polyCoeffsDecode(crkgSharesQStr[peerIdx][row][col][id])
+					coeffsP := polyCoeffsDecode(crkgSharesPStr[peerIdx][row][col][id])
+					poly := ringqp.Poly{
+						Q: &ring.Poly{},
+						P: &ring.Poly{},
+					}
+					// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+					poly.P.Coeffs = coeffsP
+					poly.Q.Coeffs = coeffsQ
+					polyArr[row][col][id] = poly
+				}
+			}
+		}
+		rkgShares[peerIdx].Value = polyArr
+		// fmt.Println("Rot key share aggregation")
+		rkg.AggregateShare(&rkgShares[peerIdx], rkg1Combined, rkg1Combined)
+
+	}
+	fmt.Println("relin key share r1 aggregation")
+	crkgR1Str := ""
+	for row := range rkg1Combined.Value {
+		for col := range rkg1Combined.Value[row] {
+			for idx := range rkg1Combined.Value[row][col] {
+				crkgR1Str += polyCoeffsEncode(rkg1Combined.Value[row][col][idx].Q.Coeffs)
+				crkgR1Str += "&"
+				crkgR1Str += polyCoeffsEncode(rkg1Combined.Value[row][col][idx].P.Coeffs)
+				crkgR1Str += "#"
+			}
+			crkgR1Str += "@"
+		}
+		crkgR1Str += "*"
+	}
+	crkgR1Str += "\n"
+	for peerIdx := range rlkr1StrWrite {
+		rlkr1StrWrite[peerIdx].Unlock()
+	}
+
+	for peerIdx := range crkgWrite {
+		crkgWrite[peerIdx].Lock()
+		rlkr1StrWrite[peerIdx].Lock()
+	}
+	for idx := 0; idx < numPeers; idx++ {
+		go handleClientrrlkr2(clientIPs, idx)
+	}
+	for peerIdx := range crkgWrite {
+		crkgWrite[peerIdx].Lock()
+		// crtgWrite[peerIdx].Lock()
+	}
+
+	for peerIdx := range clientIPs {
+		rkgShares[peerIdx] = drlwe.RKGShare{
+			Value: [][][2]ringqp.Poly{},
+		}
+		polyArr := make([][][2]ringqp.Poly, len(crkgSharesQStr[peerIdx]))
+
+		for row := range crkgSharesQStr[peerIdx] {
+			polyArr[row] = make([][2]ringqp.Poly, len(crkgSharesQStr[peerIdx][row]))
+			for col := range crkgSharesQStr[peerIdx][row] {
+				// polyArr[row][col] = make([]ringqp.Poly, len(crkgSharesQStr[peerIdx][row][col]))
+				for id := range crkgSharesQStr[peerIdx][row][col] {
+					coeffsQ := polyCoeffsDecode(crkgSharesQStr[peerIdx][row][col][id])
+					coeffsP := polyCoeffsDecode(crkgSharesPStr[peerIdx][row][col][id])
+					poly := ringqp.Poly{
+						Q: &ring.Poly{},
+						P: &ring.Poly{},
+					}
+					// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+					poly.P.Coeffs = coeffsP
+					poly.Q.Coeffs = coeffsQ
+					polyArr[row][col][id] = poly
+				}
+			}
+		}
+		rkgShares[peerIdx].Value = polyArr
+		// fmt.Println("Rot key share aggregation")
+		rkg.AggregateShare(&rkgShares[peerIdx], rkg2Combined, rkg2Combined)
+
+	}
+	crlk := ckks.NewRelinearizationKey(params)
+	rkg.GenRelinearizationKey(rkg1Combined, rkg2Combined, crlk)
+	// conn.Write([]byte(toSendString))
+	// crp_rtg := rtg.SampleCRP(prng)
+	// rtg.GenRotationKey(rtgCombined, crp_rtg, rotKeySet.Keys[galEl])
+	// fmt.Println("Rot key aggregation")
 
 }
 
@@ -405,15 +609,15 @@ func ClientSetup(serverAddress string) {
 	// minLevel, logBound, ok := dckks.GetMinimumLevelForBootstrapping(128, params.DefaultScale(), numPeers, params.Q())
 
 	//////////////////////////Generating Public key share////////////////////////////////
-	p := new(Party)
-	p.CKGProtocol = dckks.NewCKGProtocol(params)
-	p.s = ckks.NewSecretKey(params) //sk0Shards[0]
-	p.s1 = p.AllocateShare()
+	// p := new(Party)
+	// p.CKGProtocol = dckks.NewCKGProtocol(params)
+	// p.s = ckks.NewSecretKey(params) //sk0Shards[0]
+	// p.s1 = p.AllocateShare()
 
-	crp := p.SampleCRP(prng)
+	// crp := p.SampleCRP(prng)
 
-	p.GenShare(p.s, crp, p.s1)
-	fmt.Println("Gen pk")
+	// p.GenShare(p.s, crp, p.s1)
+	// fmt.Println("Gen pk")
 
 	// toSendString := ""
 	// toSendString += polyCoeffsEncode(p.s1.Value.Q.Coeffs)
@@ -422,22 +626,22 @@ func ClientSetup(serverAddress string) {
 
 	// toSendString += "\n"
 	// fmt.Println("Gen sending strings")
-	pk_data, err := p.s1.MarshalBinary()
-	fmt.Println(len(pk_data))
-	n, err := conn.Write(pk_data)
-	fmt.Println(n)
-	if err != nil {
-		fmt.Printf("Error writing: %#v\n", err)
-		return
-	}
-	// n, err := conn.Write([]byte(pk_data))
-	// fmt.Println(n)
+	// // pk_data, err := p.s1.MarshalBinary()
+	// // fmt.Println(len(pk_data))
+	// // n, err := conn.Write(pk_data)
+	// // fmt.Println(n)
+	// // if err != nil {
+	// // 	fmt.Printf("Error writing: %#v\n", err)
+	// // 	return
+	// // }
+	// // n, err := conn.Write([]byte(pk_data))
+	// // fmt.Println(n)
 	// conn.Write([]byte(toSendString))
-	_, err = bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Receiving CPK")
+	// _, err = bufio.NewReader(conn).ReadString('\n')
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Println("Receiving CPK")
 	////////////////////////Receving CPK//////////////////////////////////////
 
 	//Generating rotation key share
@@ -465,12 +669,91 @@ func ClientSetup(serverAddress string) {
 	///////////////////////////////////////////////
 
 	//////////////Generating relin key share///////////////////////////
-	// p3 := new(PartyRKG)
-	// p3.RKGProtocol = dckks.NewRKGProtocol(params)
-	// p3.sk = ckks.NewSecretKey(params) // p.s
-	// p3.ephSk, p3.share1, p3.share2 = p3.AllocateShare()
-	// crp_rkg := p3.SampleCRP(prng)
-	// p3.GenShareRoundOne(p3.sk, crp_rkg, p3.ephSk, p3.share1)
+	p3 := new(PartyRKG)
+	p3.RKGProtocol = dckks.NewRKGProtocol(params)
+	p3.sk = ckks.NewSecretKey(params) // p.s
+	p3.ephSk, p3.share1, p3.share2 = p3.AllocateShare()
+	crp_rkg := p3.SampleCRP(prng)
+	p3.GenShareRoundOne(p3.sk, crp_rkg, p3.ephSk, p3.share1)
+	toSendString := ""
+	for row := range p3.share1.Value {
+		for col := range p3.share1.Value[row] {
+			for idx := range p3.share1.Value[row][col] {
+				toSendString += polyCoeffsEncode(p3.share1.Value[row][col][idx].Q.Coeffs)
+				toSendString += "&"
+				toSendString += polyCoeffsEncode(p3.share1.Value[row][col][idx].P.Coeffs)
+				toSendString += "#"
+			}
+			toSendString += "@"
+		}
+		toSendString += "*"
+	}
+	toSendString += "\n"
+	conn.Write([]byte(toSendString))
+	fmt.Println("Sending relin key r1 share")
+	message, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Receiving rlk r1")
+
+	rlksharesArr := strings.Split(message, "*")
+	rlksharesArr = rlksharesArr[0 : len(rlksharesArr)-1]
+	rows := len(rlksharesArr)
+	// fmt.Println(rows) //4
+	crkgr1QStr := make([][][]string, rows)
+	crkgr1PStr := make([][][]string, rows)
+	polyArr := make([][][2]ringqp.Poly, len(crkgr1QStr))
+	for row := range rlksharesArr {
+		rlksharesArrtmp := strings.Split(rlksharesArr[row], "@")
+		rlksharesArrtmp = rlksharesArrtmp[0 : len(rlksharesArrtmp)-1]
+		crkgr1QStr[row] = make([][]string, len(rlksharesArrtmp))
+		crkgr1PStr[row] = make([][]string, len(rlksharesArrtmp))
+		polyArr[row] = make([][2]ringqp.Poly, len(crkgr1QStr[row]))
+		// fmt.Println(len(rotsharesArrtmp)) //0
+		for col := range rlksharesArrtmp {
+			rlksharesArrtmp2 := strings.Split(rlksharesArr[row], "#")
+			rlksharesArrtmp2 = rlksharesArrtmp2[0 : len(rlksharesArrtmp2)-1]
+			crkgr1QStr[row][col] = make([]string, len(rlksharesArrtmp2))
+			crkgr1PStr[row][col] = make([]string, len(rlksharesArrtmp2))
+			for id := range rlksharesArrtmp2 {
+				rlksharesArrtmp3 := strings.Split(rlksharesArrtmp2[id], "&")
+				crkgr1QStr[row][col][id] = rlksharesArrtmp3[0]
+				crkgr1PStr[row][col][id] = rlksharesArrtmp3[1]
+				coeffsQ := polyCoeffsDecode(crkgr1QStr[row][col][id])
+				coeffsP := polyCoeffsDecode(crkgr1PStr[row][col][id])
+				poly := ringqp.Poly{
+					Q: &ring.Poly{},
+					P: &ring.Poly{},
+				}
+				// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
+				poly.P.Coeffs = coeffsP
+				poly.Q.Coeffs = coeffsQ
+				polyArr[row][col][id] = poly
+			}
+
+		}
+	}
+	p3.share1.Value = polyArr
+	p3.GenShareRoundTwo(p3.ephSk, p3.sk, p3.share1, p3.share2)
+
+	toSendString = ""
+	for row := range p3.share2.Value {
+		for col := range p3.share2.Value[row] {
+			for idx := range p3.share2.Value[row][col] {
+				toSendString += polyCoeffsEncode(p3.share2.Value[row][col][idx].Q.Coeffs)
+				toSendString += "&"
+				toSendString += polyCoeffsEncode(p3.share2.Value[row][col][idx].P.Coeffs)
+				toSendString += "#"
+			}
+			toSendString += "@"
+		}
+		toSendString += "*"
+	}
+	toSendString += "\n"
+	conn.Write([]byte(toSendString))
+	fmt.Println("Sending relin key r2 share")
+
 	// data, err := p3.share1.MarshalBinary()
 	// conn.Write([]byte(data))
 
@@ -501,11 +784,11 @@ func main() {
 			inputs[i] = rand.Float64()
 		}
 		fmt.Println("Client setup")
-		ClientSetup("10.30.8.11:5000")
+		ClientSetup("10.30.8.11:8080")
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
 		fmt.Println("Server setup")
-		ServerSetup("10.30.8.11:5000", numPeers)
+		ServerSetup("10.30.8.11:8080", numPeers)
 		// serverPhase2("localhost:8080", numPeers, robust, 0.5, logDegree, scale, inLen)
 	}
 }

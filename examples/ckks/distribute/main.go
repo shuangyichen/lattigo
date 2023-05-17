@@ -1393,7 +1393,7 @@ func Clientinference(cpk *rlwe.PublicKey, sk *rlwe.SecretKey, idx int, serverAdd
 	for i := 0; i < sample_num; i++ {
 		features[i] = make([]complex128, F_H_out*F_W_out*filters)
 	}
-
+	fmt.Println("Packing")
 	for i := 0; i < F_H_out; i++ {
 		for j := 0; j < F_W_out; j++ {
 			for k := 0; k < filter_size; k++ {
@@ -1426,7 +1426,7 @@ func Clientinference(cpk *rlwe.PublicKey, sk *rlwe.SecretKey, idx int, serverAdd
 		ct_f1[i] = encryptor.EncryptNew(pt_f1[i])
 
 	}
-
+	fmt.Println("Encrypt")
 	// Ciphertext to string
 	ct_str := ""
 	for i := range ct_f1[0].Ciphertext.Value {

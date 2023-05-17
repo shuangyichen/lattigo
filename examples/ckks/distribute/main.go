@@ -1467,7 +1467,7 @@ func main() {
 	// scale := float64(1 << 40)
 	// robust := false
 	// logDegree := uint64(13)
-	numPeers := 2
+	numPeers := 10
 	inLen := 20000
 	server_addr := "10.30.8.11:5000" //"localhost:8080"
 	if appType == "client" {

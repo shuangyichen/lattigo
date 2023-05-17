@@ -1284,62 +1284,68 @@ func Serverinference(cpk *rlwe.PublicKey, cRotk *rlwe.RotationKeySet, cRlk *rlwe
 	}
 
 	//Agggregation
-	evaluator.Add(ct_Arr[0], ct_Arr[1], ct_Arr[0])
+	concat_start := time.Now()
+
+	for idx := 1; idx < numPeers; idx++ {
+		evaluator.Add(ct_Arr[0], ct_Arr[idx], ct_Arr[0])
+	}
+	concat_dur := time.Since(concat_start).Seconds()
+	fmt.Println("Concatenation duration: ", concat_dur)
 	fmt.Println("Form ct of complete dataset")
 
-	fmt.Println("Distribute decryption")
+	// fmt.Println("Distribute decryption")
 
-	ct_str := ""
-	for i := range ct_Arr[0].Ciphertext.Value {
-		ct_str += arrayOfIntToString(squeezedArray(ct_Arr[0].Ciphertext.Value[i].Coeffs), ",")
-		ct_str += "&"
-	}
-	ct_str += "\n"
-	for idx := 0; idx < numPeers; idx++ {
-		conn := conn_set[idx]
-		_, err := conn.Write([]byte(ct_str))
-		if err != nil {
-			panic(err)
-		}
-	}
+	// ct_str := ""
+	// for i := range ct_Arr[0].Ciphertext.Value {
+	// 	ct_str += arrayOfIntToString(squeezedArray(ct_Arr[0].Ciphertext.Value[i].Coeffs), ",")
+	// 	ct_str += "&"
+	// }
+	// ct_str += "\n"
+	// for idx := 0; idx < numPeers; idx++ {
+	// 	conn := conn_set[idx]
+	// 	_, err := conn.Write([]byte(ct_str))
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// }
 
-	for peerIdx := range crkgWrite {
-		pdWrite[peerIdx].Lock()
-		pd_done[peerIdx].Lock()
-	}
-	for idx := 0; idx < numPeers; idx++ {
-		go handleClientpd(conn_set, idx)
-	}
-	for peerIdx := range crkgWrite {
-		pdWrite[peerIdx].Lock()
-	}
-	cks := dckks.NewE2SProtocol(params, 3.19)
-	pdtmp := cks.AllocateShare(minLevel)
-	col = len(pdtmp.Value.Coeffs)
-	pd_Arr := make([]*drlwe.CKSShare, numPeers)
+	// for peerIdx := range crkgWrite {
+	// 	pdWrite[peerIdx].Lock()
+	// 	pd_done[peerIdx].Lock()
+	// }
+	// for idx := 0; idx < numPeers; idx++ {
+	// 	go handleClientpd(conn_set, idx)
+	// }
+	// for peerIdx := range crkgWrite {
+	// 	pdWrite[peerIdx].Lock()
+	// }
+	// cks := dckks.NewE2SProtocol(params, 3.19)
+	// pdtmp := cks.AllocateShare(minLevel)
+	// col = len(pdtmp.Value.Coeffs)
+	// pd_Arr := make([]*drlwe.CKSShare, numPeers)
 
-	for peerIdx := range ctStr {
-		pd_Arr[peerIdx] = cks.AllocateShare(minLevel)
-		arr := unsqueezedArray(stringToArrayOfUint(pdStr[peerIdx]), col)
-		pd_Arr[peerIdx].Value.Coeffs = arr
-		cks.AggregateShare(pd_Arr[peerIdx], pdtmp, pdtmp)
-	}
-	secretShare := NewAdditiveShareBigint(params, params.LogSlots())
-	cks.GetShare(secretShare, pdtmp, params.LogSlots(), ct_Arr[0], secretShare)
-	rec := NewAdditiveShareBigint(params, params.LogSlots())
-	// 	for _, p := range P {
-	a := rec.Value
-	b := secretShare.Value
+	// for peerIdx := range ctStr {
+	// 	pd_Arr[peerIdx] = cks.AllocateShare(minLevel)
+	// 	arr := unsqueezedArray(stringToArrayOfUint(pdStr[peerIdx]), col)
+	// 	pd_Arr[peerIdx].Value.Coeffs = arr
+	// 	cks.AggregateShare(pd_Arr[peerIdx], pdtmp, pdtmp)
+	// }
+	// secretShare := NewAdditiveShareBigint(params, params.LogSlots())
+	// cks.GetShare(secretShare, pdtmp, params.LogSlots(), ct_Arr[0], secretShare)
+	// rec := NewAdditiveShareBigint(params, params.LogSlots())
+	// // 	for _, p := range P {
+	// a := rec.Value
+	// b := secretShare.Value
 
-	for i := range a {
-		a[i].Add(a[i], b[i])
-	}
-	pt := ckks.NewPlaintext(params, ct_Arr[0].Level(), ct_Arr[0].Scale)
-	pt.Value.IsNTT = false
-	encoder := ckks.NewEncoder(params)
-	params.RingQ().SetCoefficientsBigintLvl(pt.Level(), rec.Value, pt.Value)
-	_ = encoder.DecodePublic(pt, params.LogSlots(), 0)
-	fmt.Println("Decrypt!")
+	// for i := range a {
+	// 	a[i].Add(a[i], b[i])
+	// }
+	// pt := ckks.NewPlaintext(params, ct_Arr[0].Level(), ct_Arr[0].Scale)
+	// pt.Value.IsNTT = false
+	// encoder := ckks.NewEncoder(params)
+	// params.RingQ().SetCoefficientsBigintLvl(pt.Level(), rec.Value, pt.Value)
+	// _ = encoder.DecodePublic(pt, params.LogSlots(), 0)
+	// fmt.Println("Decrypt!")
 	// 	}
 	// ct_final := ckks.NewCiphertext(params, params.LogSlots(), params.MaxLevel(), params.DefaultScale())
 	// cks.KeySwitch(ct_Arr[0], pdtmp, ct_final)
@@ -1392,21 +1398,21 @@ func Clientinference(cpk *rlwe.PublicKey, sk *rlwe.SecretKey, idx int, serverAdd
 		for j := 0; j < F_W_out; j++ {
 			for k := 0; k < filter_size; k++ {
 				for n := 0; n < filter_size; n++ {
-					if idx == 0 {
-						if j+n < party1_cols {
-							features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
-							// features2[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
-						} else {
-							// features2[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
-							features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
-						}
+					// if idx == 0 {
+					if j+n < party1_cols {
+						features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
+						// features2[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
 					} else {
-						if j+n > party1_cols {
-							features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
-						} else {
-							features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
-						}
+						// features2[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
+						features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
 					}
+					// } else {
+					// 	if j+n > party1_cols {
+					// 		features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = x[0][(i+k)*F_H+j+n]
+					// 	} else {
+					// 		features[0][(F_W_out*(i)+j)*filters+k*filter_size+n] = complex(0, 0)
+					// 	}
+					// }
 				}
 			}
 		}
@@ -1476,22 +1482,22 @@ func main() {
 			inputs[i] = rand.Float64()
 		}
 		fmt.Println("Client setup")
-		// cpk, sk, idx := ClientSetup(server_addr)
+		cpk, sk, idx := ClientSetup(server_addr)
 		// client_start := time.Now()
-		_, _, _ = ClientSetup(server_addr)
+		// _, _, _ = ClientSetup(server_addr)
 		// client_dur := time.Since(client_start).Seconds()
 		// fmt.Println("Setup phase client-side duration: ", client_dur)
 		// time.Sleep(3 * time.Second)
-		// Clientinference(cpk, sk, idx, server_addr)
+		Clientinference(cpk, sk, idx, server_addr)
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
 		fmt.Println("Server setup")
 		server_start := time.Now()
-		// cpk, cRotk, cRlk := ServerSetup(server_addr, numPeers)
-		_, _, _ = ServerSetup(server_addr, numPeers)
+		cpk, cRotk, cRlk := ServerSetup(server_addr, numPeers)
+		// _, _, _ = ServerSetup(server_addr, numPeers)
 		server_dur := time.Since(server_start).Seconds()
 		fmt.Println("Setup phase server-side duration: ", server_dur)
-		// Serverinference(cpk, cRotk, cRlk, numPeers, server_addr)
+		Serverinference(cpk, cRotk, cRlk, numPeers, server_addr)
 		// serverPhase2("localhost:8080", numPeers, robust, 0.5, logDegree, scale, inLen)
 	}
 }

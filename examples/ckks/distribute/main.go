@@ -927,6 +927,8 @@ func ClientSetup(serverAddress string) (cpk *rlwe.PublicKey, sk *rlwe.SecretKey,
 		panic(err)
 	}
 	fmt.Println("Connected")
+	client_start := time.Now()
+
 	index, err = strconv.Atoi(idx_str)
 	// moduli := &ckks.Moduli{Qi: []uint64{ringPrime}, Pi: []uint64{ringPrimeP}}
 	// params, err := ckks.NewParametersFromLiteral(logDegree, moduli)
@@ -1127,6 +1129,9 @@ func ClientSetup(serverAddress string) (cpk *rlwe.PublicKey, sk *rlwe.SecretKey,
 	if err != nil {
 		panic(err)
 	}
+
+	client_dur := time.Since(client_start).Seconds()
+	fmt.Println("Setup phase client-side duration: ", client_dur)
 	// data, err := p3.share1.MarshalBinary()
 	// conn.Write([]byte(data))
 	return
@@ -1472,10 +1477,10 @@ func main() {
 		}
 		fmt.Println("Client setup")
 		// cpk, sk, idx := ClientSetup(server_addr)
-		client_start := time.Now()
+		// client_start := time.Now()
 		_, _, _ = ClientSetup(server_addr)
-		client_dur := time.Since(client_start).Seconds()
-		fmt.Println("Setup phase client-side duration: ", client_dur)
+		// client_dur := time.Since(client_start).Seconds()
+		// fmt.Println("Setup phase client-side duration: ", client_dur)
 		// time.Sleep(3 * time.Second)
 		// Clientinference(cpk, sk, idx, server_addr)
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)

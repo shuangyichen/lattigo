@@ -990,7 +990,6 @@ func ClientSetup(serverAddress string) (cpk *rlwe.PublicKey, sk *rlwe.SecretKey,
 		Q: &ring.Poly{},
 		P: &ring.Poly{},
 	}
-	// poly := ringqp.Poly{P.coeffs == coeffsP, Q.coeffs== coeffsQ}
 	poly.P.Coeffs = coeffsP
 	poly.Q.Coeffs = coeffsQ
 
@@ -998,7 +997,7 @@ func ClientSetup(serverAddress string) (cpk *rlwe.PublicKey, sk *rlwe.SecretKey,
 	cpk_share.Value = poly
 	cpk = ckks.NewPublicKey(params)
 	p.GenPublicKey(cpk_share, crp, cpk)
-	fmt.Println("Receiving CPK")
+	fmt.Println("Receiving target pk")
 	dur := time.Since(pk_start).Seconds()
 	fmt.Println("CPK gen duration: ", dur)
 	// ////////////////////////Receving CPK//////////////////////////////////////
@@ -1302,14 +1301,12 @@ func Serverinference(cpk *rlwe.PublicKey, cRotk *rlwe.RotationKeySet, cRlk *rlwe
 	for peerIdx := range crkgWrite {
 		pdWrite[peerIdx].Lock()
 		pd_done[peerIdx].Lock()
-		// rlkr1StrWrite[peerIdx].Lock()
 	}
 	for idx := 0; idx < numPeers; idx++ {
 		go handleClientpd(conn_set, idx)
 	}
 	for peerIdx := range crkgWrite {
 		pdWrite[peerIdx].Lock()
-		// crtgWrite[peerIdx].Lock()
 	}
 	cks := dckks.NewE2SProtocol(params, 3.19)
 	pdtmp := cks.AllocateShare(minLevel)
@@ -1318,19 +1315,11 @@ func Serverinference(cpk *rlwe.PublicKey, cRotk *rlwe.RotationKeySet, cRlk *rlwe
 
 	for peerIdx := range ctStr {
 		pd_Arr[peerIdx] = cks.AllocateShare(minLevel)
-		// polyArr := strings.Split(pdStr[peerIdx], "&")
-		// polyArr = polyArr[:len(polyArr)-1]
-		// num_poly := len(polyArr)
-
-		// for idx_poly := range polyArr {
 		arr := unsqueezedArray(stringToArrayOfUint(pdStr[peerIdx]), col)
 		pd_Arr[peerIdx].Value.Coeffs = arr
-		// }
 		cks.AggregateShare(pd_Arr[peerIdx], pdtmp, pdtmp)
 	}
 	secretShare := NewAdditiveShareBigint(params, params.LogSlots())
-	// fmt.Println(secretShare.Value[0])
-	// fmt.Println(secretShare.Value[1])
 	cks.GetShare(secretShare, pdtmp, params.LogSlots(), ct_Arr[0], secretShare)
 	rec := NewAdditiveShareBigint(params, params.LogSlots())
 	// 	for _, p := range P {
@@ -1456,18 +1445,14 @@ func Clientinference(cpk *rlwe.PublicKey, sk *rlwe.SecretKey, idx int, serverAdd
 		dec_ct.Value[idx_poly].Coeffs = arr
 	}
 	cks := dckks.NewE2SProtocol(params, 3.19)
-	// sk1 := kgen.GenSecretKey()
+
 	pd_share := cks.AllocateShare(minLevel)
 	secretShare := NewAdditiveShareBigint(params, params.LogSlots())
-	// fmt.Println(secretShare.Value[0])
-	// fmt.Println(secretShare.Value[1])
 	cks.GenShare(sk, logBound, params.LogSlots(), dec_ct.Ciphertext.Value[1], secretShare, pd_share)
-	// sk1, dec_ct.Ciphertext.Value[1], pd_share)
-	// secretShare = NewAdditiveShareBigint(params, params.LogSlots())
 	pd_array := squeezedArray(pd_share.Value.Coeffs)
 	pd_str := arrayOfIntToString(pd_array, ",") + "\n"
 	n, err = conn.Write([]byte(pd_str))
-	fmt.Println("Sending", n)
+	// fmt.Println("Sending", n)
 }
 
 func main() {
@@ -1486,14 +1471,16 @@ func main() {
 			inputs[i] = rand.Float64()
 		}
 		fmt.Println("Client setup")
-		cpk, sk, idx := ClientSetup(server_addr)
-		time.Sleep(3 * time.Second)
-		Clientinference(cpk, sk, idx, server_addr)
+		// cpk, sk, idx := ClientSetup(server_addr)
+		_, _, _ = ClientSetup(server_addr)
+		// time.Sleep(3 * time.Second)
+		// Clientinference(cpk, sk, idx, server_addr)
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
 		fmt.Println("Server setup")
-		cpk, cRotk, cRlk := ServerSetup(server_addr, numPeers)
-		Serverinference(cpk, cRotk, cRlk, numPeers, server_addr)
+		// cpk, cRotk, cRlk := ServerSetup(server_addr, numPeers)
+		_, _, _ = ServerSetup(server_addr, numPeers)
+		// Serverinference(cpk, cRotk, cRlk, numPeers, server_addr)
 		// serverPhase2("localhost:8080", numPeers, robust, 0.5, logDegree, scale, inLen)
 	}
 }

@@ -1472,14 +1472,20 @@ func main() {
 		}
 		fmt.Println("Client setup")
 		// cpk, sk, idx := ClientSetup(server_addr)
+		client_start := time.Now()
 		_, _, _ = ClientSetup(server_addr)
+		client_dur := time.Since(client_start).Seconds()
+		fmt.Println("Setup phase client-side duration: ", client_dur)
 		// time.Sleep(3 * time.Second)
 		// Clientinference(cpk, sk, idx, server_addr)
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
 		fmt.Println("Server setup")
+		server_start := time.Now()
 		// cpk, cRotk, cRlk := ServerSetup(server_addr, numPeers)
 		_, _, _ = ServerSetup(server_addr, numPeers)
+		server_dur := time.Since(server_start).Seconds()
+		fmt.Println("Setup phase server-side duration: ", server_dur)
 		// Serverinference(cpk, cRotk, cRlk, numPeers, server_addr)
 		// serverPhase2("localhost:8080", numPeers, robust, 0.5, logDegree, scale, inLen)
 	}

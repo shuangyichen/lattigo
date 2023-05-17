@@ -1487,7 +1487,7 @@ func main() {
 		// _, _, _ = ClientSetup(server_addr)
 		// client_dur := time.Since(client_start).Seconds()
 		// fmt.Println("Setup phase client-side duration: ", client_dur)
-		// time.Sleep(3 * time.Second)
+		time.Sleep(3 * time.Second)
 		Clientinference(cpk, sk, idx, server_addr)
 		// clientPhase2(inputs, cpk, shamirShare, id, "localhost:8080", robust, logDegree, scale, 0.5)
 	} else {
